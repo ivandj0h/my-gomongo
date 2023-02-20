@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -77,4 +78,81 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+
+	http.HandleFunc("/items/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			// Get a single item
+			id := r.URL.Path[len("/items/"):]
+			objectID, err := primitive.ObjectIDFromHex(id)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			var item Item
+			err = itemsCollection.FindOne(context.Background(), bson.M{"_id": objectID}).Decode(&item)
+			if err != nil {
+				http.Error(w, "Item not found", http.StatusNotFound)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(item)
+
+		case http.MethodPut:
+			// Update an item
+			id := r.URL.Path[len("/items/"):]
+			objectID, err := primitive.ObjectIDFromHex(id)
+			if err != nil {
+				http.Error(w, "Invalid ID", http.StatusBadRequest)
+				return
+			}
+
+			var item Item
+			if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			update := bson.M{
+				"$set": bson.M{
+					"name":  item.Name,
+					"price": item.Price,
+				},
+			}
+
+			_, err = itemsCollection.UpdateOne(context.Background(), bson.M{"_id": objectID}, update)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.WriteHeader(http.StatusNoContent)
+
+		case http.MethodDelete:
+			// Delete an item
+			id := r.URL.Path[len("/items/"):]
+			objectID, err := primitive.ObjectIDFromHex(id)
+			if err != nil {
+				http.Error(w, "Invalid ID", http.StatusBadRequest)
+				return
+			}
+
+			_, err = itemsCollection.DeleteOne(context.Background(), bson.M{"_id": objectID})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.WriteHeader(http.StatusNoContent)
+
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// Start the HTTP server
+	log.Println("Listening on :8080...")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
