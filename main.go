@@ -64,6 +64,11 @@ func main() {
 				return
 			}
 
+			if item.Name == "" || item.Price == 0 {
+				http.Error(w, "Name and price are required", http.StatusBadRequest)
+				return
+			}
+
 			result, err := itemsCollection.InsertOne(context.Background(), item)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
